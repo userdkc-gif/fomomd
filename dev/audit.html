@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>FOMOMD — Bias &amp; integrity audit (dev only)</title>
+  <style>
+    body { font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; margin: 0; padding: 16px; background: #f4f7f6; color: #12282f; }
+    main { max-width: 960px; margin: 0 auto; }
+    h1 { margin-top: 0; }
+    section { background: #fff; border: 1px solid #d3dfdc; border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+    .pass { color: #0b5e58; font-weight: 700; } .info { color: #173e66; font-weight: 700; } .fail { color: #9b1c1c; font-weight: 700; } .warn { color: #7a3b00; font-weight: 700; }
+    table { border-collapse: collapse; width: 100%; font-size: 14px; }
+    th, td { border-bottom: 1px solid #e3ebe9; padding: 4px 8px; text-align: left; vertical-align: top; }
+    .wrap { overflow-x: auto; }
+    code { background: #eef4f2; padding: 1px 4px; border-radius: 4px; }
+    #summary { font-size: 1.15rem; }
+    ul { padding-left: 1.2rem; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>FOMOMD — Bias &amp; integrity audit</h1>
+  <p>Developer page, not linked from the app. Runs entirely in this browser. Reload to re-run.</p>
+  <section id="summary" aria-live="polite">Running…</section>
+  <div id="out"></div>
+</main>
+
+<script src="../data.js"></script>
+<script src="../app.js"></script>
+<script>
+(function () {
+  "use strict";
+  var out = document.getElementById("out");
+  var F = window.FOMOMD, D = window.FOMOMD_DATA;
+  if (!F || !D) { document.getElementById("summary").innerHTML = '<span class="fail">Could not load ../data.js or ../app.js</span>'; return; }
+  var E = F.engine, C = E.constants;
+  var RANDOM_SETS = 500;
+  var DIST_SETS = 5000;      // for the discrimination checks (section 3b)
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  var checks = [];
+  function check(group, name, status, detail) { checks.push({ group: group, name: name, status: status, detail: detail || "" }); }
+
+  // Seeded RNG so every run is reproducible.
+  var seed = 20260916;
+  function rand() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+
+  // Collect every string inside a value, with its path.
+  function collectStrings(obj, path, acc) {
+    if (typeof obj === "string") acc.push({ path: path, text: obj });
+    else if (Array.isArray(obj)) obj.forEach(function (v, i) { collectStrings(v, path + "[" + i + "]", acc); });
+    else if (obj && typeof obj === "object") Object.keys(obj).forEach(function (k) { collectStrings(obj[k], path ? path + "." + k : k, acc); });
+    return acc;
+  }
+  function collectKeys(obj, path, acc) {
+    if (Array.isArray(obj)) obj.forEach(function (v, i) { collectKeys(v, path + "[" + i + "]", acc); });
+    else if (obj && typeof obj === "object") Object.keys(obj).forEach(function (k) { acc.push(path ? path + "." + k : k); collectKeys(obj[k], path ? path + "." + k : k, acc); });
+    return acc;
+  }
+
+  /* ---------- 1. Data validation ---------- */
+  var problems = F.validateData();
+  check("Data", "data.js validates (traits, ids, glossary, adjacency, sources, ≤28 questions)", problems.length ? "fail" : "pass", problems.join("; "));
+
+  /* ---------- 2. Persona tests ---------- */
+  var personas = F.runPersonaTests({ quiet: true });
+  check("Personas", "Persona tests (" + personas.passed + "/" + personas.total + ")", personas.passed === personas.total ? "pass" : "fail",
+    personas.rows.map(function (r) { return (r.pass ? "PASS " : "FAIL ") + r.name + " → " + r.summary; }).join("\n"));
+
+  /* ---------- 3. Random answer sets ---------- */
+  var FORBIDDEN = /\b(rank|ranks|cut-?offs?|salary|salaries|stipend|per month|crore|lakh|lakhs|seat prediction)\b|₹|\d+\s?%/i;
+  var errors = 0, bandIssues = 0, whyIssues = 0, notFitIssues = 0, forbiddenHits = [], freq = {}, bandCount = { strong: 0, good: 0, possible: 0 }, flatCount = 0;
+  var generated = [];
+  for (var i = 0; i < RANDOM_SETS; i++) {
+    var answers = {};
+    E.questions.forEach(function (q) {
+      if (rand() < 0.08) return; // ~8% skipped
+      if (q.type === "slider") answers[q.id] = { value: Math.floor(rand() * 11) };
+      else {
+        var opts = q.options;
+        if (q.isDealbreakerQuestion && rand() < 0.8) opts = opts.filter(function (o) { return !o.dealbreaker; });
+        answers[q.id] = { optionId: opts[Math.floor(rand() * opts.length)].id };
+      }
+    });
+    try {
+      var res = E.computeResults(answers);
+      if (res.empty) continue;
+      if (res.flat) flatCount++;
+      var items = res.top.concat(res.honourable ? [res.honourable] : []);
+      items.forEach(function (r) {
+        if (!(r.band in bandCount)) bandIssues++; else if (r.rank <= 3) bandCount[r.band]++;
+        // "Why" may only use traits where the user scored high
+        r.why.traits.forEach(function (d) {
+          if (res.profile.scaled[d] - D.scoring.scaleMidpoint < C.HIGH_TRAIT_MARGIN || r.spec.profile[d] <= D.scoring.scaleMidpoint) whyIssues++;
+        });
+        if (!r.notFit.items.length || !r.notFit.items[0]) notFitIssues++;
+        if (r.rank <= 3) freq[r.spec.shortName] = (freq[r.spec.shortName] || 0) + 1;
+        [r.why.text].concat(r.notFit.items).forEach(function (txt) {
+          generated.push({ path: "random#" + i + " " + r.spec.id, text: txt });
+          if (FORBIDDEN.test(txt)) forbiddenHits.push(r.spec.id + ": " + txt);
+        });
+      });
+      if (!res.stability || Object.keys(res.stability.counts).some(function (k) { var v = res.stability.counts[k]; return v < 0 || v > C.SENSITIVITY_RUNS; })) errors++;
+    } catch (e) { errors++; }
+  }
+  check("Random sets", RANDOM_SETS + " random answer sets scored without errors", errors ? "fail" : "pass", errors + " errors");
+  check("Random sets", "Every result has a valid fit band (no numeric %)", bandIssues ? "fail" : "pass",
+    "Top-3 bands: strong " + bandCount.strong + ", good " + bandCount.good + ", possible " + bandCount.possible);
+  check("Random sets", "'Why this fits you' uses only traits where the user scored high", whyIssues ? "fail" : "pass", whyIssues + " violations");
+  check("Random sets", "Every result has a 'Where it may NOT fit you' statement", notFitIssues ? "fail" : "pass", notFitIssues + " missing");
+  check("Random sets", "Generated text has no rank/cutoff/salary/percent language", forbiddenHits.length ? "fail" : "pass", forbiddenHits.slice(0, 10).join("\n"));
+  // Restricted-entry branches are deliberately excluded from the top 3, so
+  // they are not expected to appear here — they are checked separately below.
+  var never = D.specialties.filter(function (s) { return !freq[s.shortName] && s.availability !== "restricted-entry"; })
+    .map(function (s) { return s.shortName; });
+  check("Random sets", "Every generally available branch can appear in a top 3", never.length ? "fail" : "warn",
+    (never.length ? "Never appeared: " + never.join(", ") + ". " : "") +
+    "Restricted-entry branches excluded by design: " + D.specialties.filter(function (s) { return s.availability === "restricted-entry"; }).map(function (s) { return s.shortName; }).join(", ") + ". " +
+    "Flat-answer warning shown in " + flatCount + " of " + RANDOM_SETS + " sets.");
+
+  /* ---------- 3b. Discrimination: does scoring depend on answers? ---------- */
+  function randomAnswerSet() {
+    var answers = {};
+    E.questions.forEach(function (q) {
+      if (rand() < 0.05) return;
+      if (q.type === "slider") answers[q.id] = { value: Math.floor(rand() * 11) };
+      else {
+        var opts = q.options;
+        if (q.isDealbreakerQuestion && rand() < 0.8) opts = opts.filter(function (o) { return !o.dealbreaker; });
+        answers[q.id] = { optionId: opts[Math.floor(rand() * opts.length)].id };
+      }
+    });
+    return answers;
+  }
+  function distribution(mode) {
+    var top1 = {}, top3 = {}, sets = 0;
+    for (var i = 0; i < DIST_SETS; i++) {
+      var prof = E.computeUserProfile(randomAnswerSet());
+      if (!prof.answered) continue;
+      sets++;
+      var kept = E.scoreAll(prof, E.baseWeights(), mode).kept;
+      top1[kept[0].spec.shortName] = (top1[kept[0].spec.shortName] || 0) + 1;
+      kept.slice(0, 3).forEach(function (r) { top3[r.spec.shortName] = (top3[r.spec.shortName] || 0) + 1; });
+    }
+    return { top1: top1, top3: top3, sets: sets };
+  }
+  function entropyOf(counts, sets) {
+    var h = 0;
+    Object.keys(counts).forEach(function (k) { var p = counts[k] / sets; if (p > 0) h -= p * Math.log(p) / Math.log(2); });
+    return h;
+  }
+
+  var distNew = distribution();
+  var distOld = distribution("legacy");
+  var nBranches = D.specialties.length;
+  var maxEntropy = Math.log(nBranches) / Math.log(2);
+  var entNew = entropyOf(distNew.top1, distNew.sets), entOld = entropyOf(distOld.top1, distOld.sets);
+
+  var over = [], under = [];
+  D.specialties.forEach(function (sp) {
+    var share = (distNew.top3[sp.shortName] || 0) / distNew.sets;
+    if (share > 0.25) over.push(sp.shortName + " " + (share * 100).toFixed(1) + "%");
+    if (share < 0.02) under.push(sp.shortName + " " + (share * 100).toFixed(1) + "%");
+  });
+  // Accepted exceptions: branches whose profile is honest but undramatic.
+  // Listed here so a genuine regression elsewhere still fails the check.
+  var ACCEPTED_LOW = {
+    "Transfusion Medicine": "Its profile is close to the average on most dimensions even after the v1.4 sharpening (patient contact deliberately kept at 2 for donor counselling, apheresis and reaction consults). Accepted rather than inflated to pass a threshold."
+  };
+  var underUnexpected = under.filter(function (entry) { return !ACCEPTED_LOW[entry.split(" ").slice(0, -1).join(" ")]; });
+  var underAccepted = under.filter(function (entry) { return ACCEPTED_LOW[entry.split(" ").slice(0, -1).join(" ")]; });
+  check("Discrimination", "Top-3 share stays between 2% and 25% for every branch (" + DIST_SETS + " random sets, average " + (300 / nBranches).toFixed(1) + "%)",
+    over.length || underUnexpected.length ? "fail" : underAccepted.length ? "warn" : "pass",
+    (over.length ? "ABOVE 25%: " + over.join(", ") + "\n" : "") +
+    (underUnexpected.length ? "BELOW 2%: " + underUnexpected.join(", ") + "\n" : "") +
+    (underAccepted.length ? "KNOWN ACCEPTED EXCEPTION — " + underAccepted.map(function (entry) {
+      var name = entry.split(" ").slice(0, -1).join(" ");
+      return entry + ": " + ACCEPTED_LOW[name];
+    }).join("\n") : "") ||
+    "All branches inside the range.");
+
+  var unreachable = D.specialties.filter(function (sp) { return !distNew.top1[sp.shortName]; }).map(function (sp) { return sp.shortName; });
+  check("Discrimination", "Every branch reaches #1 for at least one answer set", unreachable.length ? "fail" : "pass",
+    unreachable.length ? "Never #1: " + unreachable.join(", ") : Object.keys(distNew.top1).length + " of " + nBranches + " branches were someone's #1.");
+
+  check("Discrimination", "Entropy of the #1 distribution is at least 80% of maximum",
+    entNew / maxEntropy >= 0.8 ? "pass" : "fail",
+    "New scoring: " + entNew.toFixed(2) + " of " + maxEntropy.toFixed(2) + " bits = " + (entNew / maxEntropy * 100).toFixed(1) + "%\n" +
+    "Old (v1.1 raw-vector cosine): " + entOld.toFixed(2) + " bits = " + (entOld / maxEntropy * 100).toFixed(1) + "%");
+
+  // Answer sensitivity: flip one answer at a time, count how many of the top 3 change.
+  var changes = [], fullFlips = 0, flips = 0;
+  F.personas.forEach(function (p) {
+    var base = F.personaToAnswers(p);
+    var baseTop = E.computeResults(base, { skipSensitivity: true }).top.map(function (r) { return r.spec.id; });
+    E.questions.forEach(function (q) {
+      var variants = q.type === "slider" ? [{ value: 0 }, { value: 10 }] :
+        q.options.filter(function (o) { return !base[q.id] || base[q.id].optionId !== o.id; }).map(function (o) { return { optionId: o.id }; });
+      variants.forEach(function (v) {
+        var copy = JSON.parse(JSON.stringify(base));
+        copy[q.id] = v;
+        var newTop = E.computeResults(copy, { skipSensitivity: true }).top.map(function (r) { return r.spec.id; });
+        var same = newTop.filter(function (id) { return baseTop.indexOf(id) !== -1; }).length;
+        changes.push(3 - same);
+        flips++;
+        if (same === 0) fullFlips++;
+      });
+    });
+  });
+  changes.sort(function (a, b) { return a - b; });
+  var median = changes[Math.floor(changes.length / 2)];
+  var mean = changes.reduce(function (a, b) { return a + b; }, 0) / changes.length;
+  var fullShare = fullFlips / flips;
+  var movedShare = changes.filter(function (c) { return c > 0; }).length / flips;
+  check("Discrimination", "Single-answer flips move the top 3, without churning it completely (pass: at least 15% move something AND under 50% replace all three)",
+    movedShare < 0.15 || fullShare >= 0.5 ? "fail" : "pass",
+    "Median branches changed per flip: " + median + " of 3 (mean " + mean.toFixed(2) + ") across " + flips + " flips.\n" +
+    "Flips replacing all 3: " + (fullShare * 100).toFixed(1) + "% (fails above 50%).\n" +
+    "Flips changing nothing: " + (changes.filter(function (c) { return c === 0; }).length / flips * 100).toFixed(1) + "%\n" +
+    "Flips changing at least one branch: " + (movedShare * 100).toFixed(1) + "% (needs at least 15%)\n" +
+    "Note: each of " + E.questions.length + " questions carries a small share of the signal, so most single flips leave a strong persona's top 3 intact. " +
+    "A median of 0 means 'one answer rarely overturns three branches', not 'answers are ignored'.");
+
+  // Determinism: the same answers must always give the same result.
+  var determinismFails = [];
+  F.personas.forEach(function (p) {
+    var a1 = F.personaToAnswers(p), a2 = F.personaToAnswers(p);
+    var r1 = E.computeResults(a1), r2 = E.computeResults(a2);
+    var sig = function (r) {
+      return r.top.map(function (e) { return e.spec.id + ":" + e.band + ":" + e.sim.toFixed(6); }).join("|") +
+        " stability:" + JSON.stringify(r.stability.counts);
+    };
+    if (sig(r1) !== sig(r2)) determinismFails.push(p.name);
+  });
+  check("Discrimination", "Scoring is deterministic — the same answers give identical top 3, bands and stability",
+    determinismFails.length ? "fail" : "pass",
+    determinismFails.length ? "Differed between runs: " + determinismFails.join(", ") :
+      "All " + F.personas.length + " personas scored twice: identical branches, bands, scores and stability counts.");
+
+  // Question informativeness: how far apart are an option's weight vectors?
+  var dull = [], infoRows = [];
+  E.questions.forEach(function (q) {
+    var vecs;
+    if (q.type === "slider") {
+      vecs = [E.dimensions.map(function (d) { return -5 * ((q.perPoint || {})[d] || 0); }),
+              E.dimensions.map(function (d) { return 5 * ((q.perPoint || {})[d] || 0); })];
+    } else {
+      vecs = q.options.map(function (o) { return E.dimensions.map(function (d) { return (o.weights || {})[d] || 0; }); });
+    }
+    var pairs = 0, total = 0;
+    for (var a = 0; a < vecs.length; a++) for (var b = a + 1; b < vecs.length; b++) {
+      var sum = 0;
+      for (var k = 0; k < vecs[a].length; k++) sum += Math.pow(vecs[a][k] - vecs[b][k], 2);
+      total += Math.sqrt(sum); pairs++;
+    }
+    var spread = pairs ? total / pairs : 0;
+    var byDesign = q.isDealbreakerQuestion || (q.type === "slider" && !Object.keys(q.perPoint || {}).length);
+    infoRows.push({ id: q.id, spread: spread, byDesign: byDesign });
+    if (spread < 1.0 && !byDesign) dull.push(q.id + " (" + spread.toFixed(2) + ")");
+  });
+  infoRows.sort(function (a, b) { return a.spread - b.spread; });
+  check("Discrimination", "Every scored question's options differ enough to carry information", dull.length ? "warn" : "pass",
+    (dull.length ? "Nearly identical options: " + dull.join(", ") + "\n" : "No scored question has near-identical options.\n") +
+    "Lowest spreads: " + infoRows.filter(function (r) { return !r.byDesign; }).slice(0, 6).map(function (r) { return r.id + " " + r.spread.toFixed(2); }).join(", ") + "\n" +
+    "Carry no trait weights by design (dealbreaker flags / an honest note only): " +
+      infoRows.filter(function (r) { return r.byDesign; }).map(function (r) { return r.id; }).join(", "));
+
+  /* ---------- 3c. Availability tiers (v1.3) ---------- */
+  var restrictedIds = D.specialties.filter(function (sp) { return sp.availability === "restricted-entry"; }).map(function (sp) { return sp.id; });
+  var availMissing = D.specialties.filter(function (sp) {
+    return ["widely-available", "limited-centres", "restricted-entry"].indexOf(sp.availability) === -1;
+  }).map(function (sp) { return sp.id; });
+  var restrictedLeak = 0, familyLeak = 0, mapShown = 0;
+  var availSets = 0;
+  for (var ai = 0; ai < DIST_SETS; ai++) {
+    var ans = randomAnswerSet();
+    var out = E.computeResults(ans, { skipSensitivity: true });
+    if (out.empty) continue;
+    availSets++;
+    if (out.top.some(function (e) { return restrictedIds.indexOf(e.spec.id) !== -1; })) restrictedLeak++;
+    if (out.families.some(function (f) { return restrictedIds.indexOf(f.entry.spec.id) !== -1; })) familyLeak++;
+    if (out.keptEntries.some(function (e) { return restrictedIds.indexOf(e.spec.id) !== -1; })) mapShown++;
+  }
+  check("Discrimination", "Every branch carries a valid availability tier", availMissing.length ? "fail" : "pass",
+    availMissing.length ? "Missing or invalid: " + availMissing.join(", ") :
+      ["widely-available", "limited-centres", "restricted-entry"].map(function (tier) {
+        return tier + ": " + D.specialties.filter(function (sp) { return sp.availability === tier; }).length;
+      }).join(", "));
+  var OUTLOOKS = ["terminal", "hospital-based", "often-paired", "institutional"];
+  var outlookMissing = D.specialties.filter(function (sp) { return OUTLOOKS.indexOf(sp.careerOutlook) === -1; }).map(function (sp) { return sp.id; });
+  check("Discrimination", "Every branch carries a valid long-term outlook", outlookMissing.length ? "fail" : "pass",
+    outlookMissing.length ? "Missing or invalid: " + outlookMissing.join(", ") :
+      OUTLOOKS.map(function (o) {
+        return o + ": " + D.specialties.filter(function (sp) { return sp.careerOutlook === o; }).length;
+      }).join(", ") + " (branches with their own wording: " +
+      D.specialties.filter(function (sp) { return sp.careerOutlookNote; }).map(function (sp) { return sp.shortName; }).join(", ") + ")");
+
+  check("Discrimination", "Restricted-entry branches never appear in the closest 3 or the families section",
+    restrictedLeak || familyLeak ? "fail" : "pass",
+    "Across " + availSets + " random sets: " + restrictedLeak + " leaks into the closest 3, " + familyLeak + " into families.\n" +
+    "They still appear in the full fit map in " + (mapShown / availSets * 100).toFixed(0) + "% of sets, with their access route stated.");
+
+  /* ---------- 3d. Skips must not bias results towards the middle (v1.3) ---------- */
+  function skipRun(nSkips) {
+    var top1 = {}, sets = 0, extremity = 0, uncovered = 0;
+    for (var i = 0; i < 1200; i++) {
+      var ans = randomAnswerSet();
+      var ids = Object.keys(ans);
+      for (var k = 0; k < nSkips && ids.length; k++) delete ans[ids.splice(Math.floor(rand() * ids.length), 1)[0]];
+      var prof = E.computeUserProfile(ans);
+      if (!prof.answered) continue;
+      sets++;
+      uncovered += prof.uncovered.length;
+      var winner = E.scoreAll(prof, E.baseWeights()).kept[0].spec;
+      top1[winner.shortName] = (top1[winner.shortName] || 0) + 1;
+      // How distinctive is the winning branch? Falling values would mean
+      // skips push everyone towards bland, middle-of-the-road branches.
+      var sum = 0;
+      E.dimensions.forEach(function (d) { sum += Math.pow((winner.profile[d] - E.branchStats[d].mean) / E.branchStats[d].sd, 2); });
+      extremity += Math.sqrt(sum / E.dimensions.length);
+    }
+    return { entropy: entropyOf(top1, sets), distinct: Object.keys(top1).length, extremity: extremity / sets, uncovered: uncovered / sets, sets: sets };
+  }
+  var skipRows = [0, 2, 4, 6, 8].map(function (n) { return { n: n, r: skipRun(n) }; });
+  var base = skipRows[0].r, worst = skipRows[skipRows.length - 1].r;
+  var entropyDrop = (base.entropy - worst.entropy) / base.entropy;
+  var extremityDrop = (base.extremity - worst.extremity) / base.extremity;
+  check("Discrimination", "Skipped questions do not push results towards middle-of-the-road branches",
+    extremityDrop > 0.15 || entropyDrop > 0.15 ? "fail" : "pass",
+    skipRows.map(function (row) {
+      return "skips=" + row.n + ": entropy " + row.r.entropy.toFixed(2) + " bits (" + (row.r.entropy / maxEntropy * 100).toFixed(1) + "%)" +
+        ", distinct #1s " + row.r.distinct + ", winner distinctiveness " + row.r.extremity.toFixed(3) +
+        ", uncovered dimensions " + row.r.uncovered.toFixed(2);
+    }).join("\n") +
+    "\nChange from 0 to 8 skips — entropy " + (entropyDrop * 100).toFixed(1) + "%, winner distinctiveness " + (extremityDrop * 100).toFixed(1) + "% (fails above 15%).");
+
+  /* ---------- 4. Gender: questions and dimensions ---------- */
+  var GENDER_Q = /\b(gender|sex|sexes|male|female|man|woman|men|women|boy|girl|boys|girls|husband|wife|married|marriage|marital|maternity|paternity|family planning|pregnant yourself)\b/i;
+  var PROXY = /\b(marriage|marital|family planning|your own children|having children|start a family|maternity leave|safety as a|hostel|physical appearance|your looks|dress code|household duties|in-laws)\b/i;
+  var qStrings = [];
+  E.questions.forEach(function (q) { collectStrings({ prompt: q.prompt, helper: q.helper, minLabel: q.minLabel, maxLabel: q.maxLabel, options: q.options }, q.id, qStrings); });
+  var qGender = qStrings.filter(function (s) { return GENDER_Q.test(s.text); });
+  check("Gender", "No question asks about gender (question and option text)", qGender.length ? "fail" : "pass",
+    qGender.map(function (s) { return s.path + ": " + s.text; }).join("\n"));
+
+  var keyHits = collectKeys(D, "", []).filter(function (k) { return /(^|\.)(gender|sex|isMale|isFemale)$/i.test(k); });
+  var answerKeys = E.questions.map(function (q) { return q.id; }).filter(function (id) { return /gender|sex/i.test(id); });
+  check("Gender", "No data field or answer key stores or uses gender", keyHits.length || answerKeys.length ? "fail" : "pass", keyHits.concat(answerKeys).join(", "));
+
+  var dimStrings = [];
+  D.dimensions.forEach(function (d) { collectStrings(d, "dimension." + d.id, dimStrings); });
+  var dimGender = dimStrings.filter(function (s) { return GENDER_Q.test(s.text) || /female-friendly|women-friendly|family-friendly/i.test(s.text); });
+  var qProxy = qStrings.filter(function (s) { return PROXY.test(s.text); });
+  check("Gender", "No dimension is defined in gendered terms, and no question probes common gender proxies (marriage, family plans, safety-as-a-woman, appearance)",
+    dimGender.length || qProxy.length ? "fail" : "pass",
+    dimGender.concat(qProxy).map(function (s) { return s.path + ": " + s.text; }).join("\n") ||
+    "Note: 'Predictable hours' (lifestyle) is the dimension most often gendered in the specialty-choice literature; here it is framed purely as a working-hours preference for everyone. A true statistical proxy test needs real, consented demographic data — this audit checks wording and structure only.");
+
+  /* ---------- 5. Gendered-language scan of result strings ---------- */
+  var GENDERED = /\b(he|she|him|her|his|hers|he\/she|s\/he|himself|herself|female-friendly|male-dominated|women-friendly|for women|for men|women|men|woman|man|ladies|lady|girls?|boys?|feminine|masculine|motherly|fatherly|gentlem[ae]n|manpower)\b/i;
+  var resultStrings = [];
+  D.specialties.forEach(function (s) { collectStrings({ name: s.name, whyItFits: s.whyItFits, realityCheck: s.realityCheck, cautionIf: s.cautionIf, askAResident: s.askAResident, indiaNote: s.indiaNote }, "specialty." + s.id, resultStrings); });
+  collectStrings(D.strings, "strings", resultStrings);
+  collectStrings(D.dealbreakers, "dealbreakers", resultStrings);
+  collectStrings(D.consistencyPairs, "consistencyPairs", resultStrings);
+  resultStrings = resultStrings.concat(qStrings, dimStrings, generated);
+  var genderedHits = resultStrings.filter(function (s) { return GENDERED.test(s.text); });
+  var uniqueHits = {};
+  genderedHits.forEach(function (h) { uniqueHits[h.text] = h.path; });
+  check("Gender", "Gendered-language scan (" + resultStrings.length + " strings incl. generated results)", genderedHits.length ? "fail" : "pass",
+    Object.keys(uniqueHits).map(function (txt) { return uniqueHits[txt] + ": " + txt.match(GENDERED)[0] + " — " + txt; }).join("\n") || "No matches.");
+
+  /* ---------- 6. Content verification (action items before launch) ---------- */
+  var statIssues = [];
+  (D.statistics || []).forEach(function (st) {
+    var missing = [];
+    if (!st.country) missing.push("country");
+    if (!st.year) missing.push("year");
+    if (!st.source) missing.push("source");
+    var shown = st.where ? st.where.split(".").reduce(function (o, k) { return o == null ? undefined : o[k]; }, D) : undefined;
+    if (typeof shown !== "string") missing.push("displayed text not found at " + st.where);
+    else {
+      if (st.year && shown.indexOf(String(st.year)) === -1) missing.push("year not in displayed sentence");
+      var labels = (st.countryLabels || [st.country]).filter(Boolean);
+      if (!labels.some(function (l) { return new RegExp("\\b" + l + "\\b").test(shown); })) missing.push("country not in displayed sentence");
+      if (st.value && shown.indexOf(st.value) === -1) missing.push("value '" + st.value + "' not in displayed sentence");
+    }
+    if (missing.length) statIssues.push(st.id + ": " + missing.join(", "));
+  });
+  // Any percentage in UI strings must belong to a registered statistic.
+  var registeredValues = (D.statistics || []).map(function (st) { return st.value; }).filter(Boolean);
+  collectStrings(D.strings, "strings", []).forEach(function (s2) {
+    var m = s2.text.match(/\d+(\.\d+)?\s?%/g);
+    if (m && !registeredValues.some(function (v) { return s2.text.indexOf(v) !== -1; })) statIssues.push("Unregistered statistic in " + s2.path + ": " + m.join(", "));
+  });
+  check("Content", "Every statistic shown carries its country and year in the same sentence, with a registered source", statIssues.length ? "fail" : "pass",
+    statIssues.join("\n") || (D.statistics || []).map(function (st) { return st.id + " — " + st.country + ", " + st.year + " — " + st.source; }).join("\n"));
+  check("Content", "Footer review fields filled (lastReviewed, reviewerName)", D.lastReviewed && D.reviewerName ? "pass" : "warn",
+    "lastReviewed: " + (D.lastReviewed || "empty") + "; reviewerName: " + (D.reviewerName || "empty"));
+  var noSources = D.specialties.filter(function (s3) { return !s3.sources.length; }).length;
+  check("Content", "Per-branch sources (informational — left empty by owner decision, 2026-09-16)", "info", noSources + " of " + D.specialties.length + " branches have no sources yet");
+  check("Content", "Analytics disabled by default", D.analytics && D.analytics.enabled ? "warn" : "pass", D.analytics && D.analytics.enabled ? "Analytics is ENABLED — confirm this is intended." : "");
+
+  /* ---------- Render ---------- */
+  var groups = ["Data", "Personas", "Random sets", "Discrimination", "Gender", "Content"];
+  var core = checks.filter(function (c) { return c.group !== "Content"; });
+  var coreFail = core.filter(function (c) { return c.status === "fail"; }).length;
+  var contentWarn = checks.filter(function (c) { return c.group === "Content" && (c.status === "warn" || c.status === "fail"); }).length;
+  var coreWarn = core.filter(function (c) { return c.status === "warn"; }).length;
+
+  document.getElementById("summary").innerHTML =
+    '<strong>Bias &amp; integrity audit: <span class="' + (coreFail ? "fail" : "pass") + '">' + (coreFail ? "FAIL" : "PASS") + '</span></strong> — ' +
+    core.filter(function (c) { return c.status === "pass"; }).length + " passed, " + coreFail + " failed, " + coreWarn + " warnings.<br>" +
+    '<strong>Content verification:</strong> <span class="' + (contentWarn ? "warn" : "pass") + '">' + (contentWarn ? contentWarn + " action item(s) before launch" : "complete") + "</span>";
+
+  out.innerHTML = groups.map(function (g) {
+    return '<section><h2>' + esc(g) + '</h2><div class="wrap"><table><thead><tr><th>Status</th><th>Check</th><th>Details</th></tr></thead><tbody>' +
+      checks.filter(function (c) { return c.group === g; }).map(function (c) {
+        return '<tr><td class="' + c.status + '">' + c.status.toUpperCase() + '</td><td>' + esc(c.name) + '</td><td><pre style="white-space:pre-wrap;margin:0;font:inherit">' + esc(c.detail) + '</pre></td></tr>';
+      }).join("") + '</tbody></table></div></section>';
+  }).join("") +
+  '<section><h2>Top-1 distribution: old vs new scoring (' + DIST_SETS + ' random sets)</h2><div class="wrap"><table>' +
+    '<thead><tr><th>Branch</th><th>New: #1</th><th>New: in top 3</th><th>Old (v1.1): #1</th></tr></thead><tbody>' +
+    D.specialties.slice().sort(function (a, b) { return (distNew.top3[b.shortName] || 0) - (distNew.top3[a.shortName] || 0); }).map(function (sp) {
+      var t3 = (distNew.top3[sp.shortName] || 0) / distNew.sets * 100;
+      var cls = t3 > 25 || t3 < 2 ? ' class="fail"' : '';
+      return '<tr><td>' + esc(sp.shortName) + '</td><td>' + ((distNew.top1[sp.shortName] || 0) / distNew.sets * 100).toFixed(1) + '%</td>' +
+        '<td' + cls + '>' + t3.toFixed(1) + '%</td><td>' + ((distOld.top1[sp.shortName] || 0) / distOld.sets * 100).toFixed(1) + '%</td></tr>';
+    }).join("") + '</tbody></table></div>' +
+    '<p>Entropy of the #1 distribution — new: ' + entNew.toFixed(2) + ' bits (' + (entNew / maxEntropy * 100).toFixed(1) + '% of the ' + maxEntropy.toFixed(2) + '-bit maximum); old: ' + entOld.toFixed(2) + ' bits (' + (entOld / maxEntropy * 100).toFixed(1) + '%).</p></section>' +
+  '<section><h2>Top-3 frequency across ' + RANDOM_SETS + ' random sets (informational)</h2><div class="wrap"><table><thead><tr><th>Branch</th><th>Times in top 3</th></tr></thead><tbody>' +
+    Object.keys(freq).sort(function (a, b) { return freq[b] - freq[a]; }).map(function (k) { return '<tr><td>' + esc(k) + '</td><td>' + freq[k] + '</td></tr>'; }).join("") +
+  '</tbody></table></div><p>Random answers are contradictory, so this mainly shows which profiles are "spiky". It is not how real users behave.</p></section>';
+
+  // Machine-readable result for automated runs
+  window.FOMOMD_AUDIT = { pass: !coreFail, checks: checks, frequency: freq };
+  console.log("[FOMOMD audit] " + (coreFail ? "FAIL" : "PASS") + " — content action items: " + contentWarn);
+})();
+</script>
+</body>
+</html>

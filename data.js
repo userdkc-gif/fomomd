@@ -34,7 +34,7 @@ window.FOMOMD_DATA = {
   /* ------------------------------------------------------------------
      1. CONTENT METADATA
      ------------------------------------------------------------------ */
-  contentVersion: "1.7",
+  contentVersion: "1.8",
   lastReviewed: "2026-09-24",   // date of the last clinical content review (YYYY-MM-DD)
   reviewerName: "Dr. Karthik Deegutla, Anaesthesiologist",   // shown in the footer
 
@@ -73,9 +73,11 @@ window.FOMOMD_DATA = {
     goatcounterCode: "fomomd"   // dashboard: https://fomomd.goatcounter.com
   },
 
-  // Optional feedback link, e.g. "https://forms.gle/YOUR_FORM_ID".
-  // The link is hidden while this is empty.
-  feedbackUrl: "",
+  // Feedback form (Tally). Opened in a new tab, always bare: the app never
+  // appends answers, results or any query parameter to it, and the link
+  // carries rel="noreferrer" so not even the page URL is passed along.
+  // Leave empty to hide every feedback link.
+  feedbackUrl: "https://tally.so/r/VLg9lM",
 
   officialLinks: {
     mcc: "https://mcc.nic.in"
@@ -216,7 +218,10 @@ window.FOMOMD_DATA = {
         feedbackYes: "👍 Yes",
         feedbackNo: "👎 Not really",
         feedbackThanks: "Thank you — noted.",
-        feedbackThanksNo: "Thank you — that's genuinely useful to know.",
+        feedbackThanksNo: "Thank you — that's genuinely useful. Tell us what felt off and I'll fix it.",
+        feedbackForm: "Tell us what felt off",
+        feedbackQuiet: "Something wrong? Tell us.",
+        feedbackNewTab: "opens in a new tab",
         snapshotTitle: "Your trait snapshot",
         snapshotSub: "Your five clearest leanings, based on today's answers.",
         strength: { strong: "Strong", clear: "Clear", moderate: "Moderate" },

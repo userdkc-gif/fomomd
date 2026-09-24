@@ -1092,14 +1092,29 @@
    * session and never repeated.
    */
   function feedbackBlock() {
-    if (!analyticsOn || state.feedbackDone) return "";
+    if (state.feedbackDone && !DATA.feedbackUrl) return "";
+    // The bare form URL: never built up, never given a query string.
+    var link = DATA.feedbackUrl
+      ? '<a class="fb-link" href="' + esc(DATA.feedbackUrl) + '" target="_blank" rel="noopener noreferrer">' +
+        esc(t("results.feedbackQuiet")) + ' <span class="visually-hidden">(' + esc(t("results.feedbackNewTab")) + ')</span></a>'
+      : "";
+    var thumbs = (analyticsOn && !state.feedbackDone)
+      ? '<p class="fb-title" id="fb-title">' + esc(t("results.feedbackTitle")) + '</p>' +
+        '<div class="fb-buttons">' +
+          '<button class="btn btn-small" data-action="feedback" data-value="useful">' + esc(t("results.feedbackYes")) + '</button>' +
+          '<button class="btn btn-small" data-action="feedback" data-value="not_useful">' + esc(t("results.feedbackNo")) + '</button>' +
+        '</div>'
+      : "";
+    if (!thumbs && !link) return "";
     return '<section class="feedback no-print" id="feedback-block" aria-labelledby="fb-title">' +
-      '<p class="fb-title" id="fb-title">' + esc(t("results.feedbackTitle")) + '</p>' +
-      '<div class="fb-buttons">' +
-        '<button class="btn btn-small" data-action="feedback" data-value="useful">' + esc(t("results.feedbackYes")) + '</button>' +
-        '<button class="btn btn-small" data-action="feedback" data-value="not_useful">' + esc(t("results.feedbackNo")) + '</button>' +
-      '</div>' +
-    '</section>';
+      thumbs + link + '</section>';
+  }
+
+  /** Shown after a thumbs-down: the same bare form, as a button. */
+  function feedbackFormButton() {
+    if (!DATA.feedbackUrl) return "";
+    return '<a class="btn btn-small fb-form" href="' + esc(DATA.feedbackUrl) + '" target="_blank" rel="noopener noreferrer">' +
+      esc(t("results.feedbackForm")) + ' <span class="visually-hidden">(' + esc(t("results.feedbackNewTab")) + ')</span></a>';
   }
 
   function ignoresPanel() {
@@ -1611,7 +1626,10 @@
         var block = main.querySelector("#feedback-block");
         if (block) {
           block.innerHTML = '<p class="fb-thanks" role="status">' +
-            esc(value === "useful" ? t("results.feedbackThanks") : t("results.feedbackThanksNo")) + '</p>';
+            esc(value === "useful" ? t("results.feedbackThanks") : t("results.feedbackThanksNo")) + '</p>' +
+            (value === "not_useful" ? feedbackFormButton() : "") +
+            (DATA.feedbackUrl ? '<a class="fb-link" href="' + esc(DATA.feedbackUrl) + '" target="_blank" rel="noopener noreferrer">' +
+              esc(t("results.feedbackQuiet")) + '</a>' : "");
         }
         break;
       }

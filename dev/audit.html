@@ -364,6 +364,7 @@
       "All " + hostileNames.length + " hostile payloads refused, including branch names, pasted answers and free text.");
 
   // Static scan: every track() call in app.js must pass a literal from the list.
+  var appSource = "";
   var trackScan = "not run (open this page over http:// to scan app.js)";
   var trackStatus = "warn";
   try {
@@ -372,6 +373,7 @@
     req.send(null);
     if (req.status >= 200 && req.status < 400) {
       var src = req.responseText;
+      appSource = src;
       // Extract each track(...) argument with balanced parentheses, so a
       // nested call like track("x" + (i + 1)) is read in full.
       var calls = [];
@@ -400,6 +402,36 @@
     }
   } catch (e) { trackScan = "not run (" + e.name + ")"; }
   check("Analytics", "Every track() call in app.js sends an allowlisted name", trackStatus, trackScan);
+
+  // The feedback form must be opened bare — no answers, no results, no query string.
+  var formUrl = D.feedbackUrl || "";
+  var formProblems = [];
+  if (formUrl) {
+    if (!/^https:\/\/[^?#\s]+$/.test(formUrl)) formProblems.push("feedbackUrl is not a bare https URL without query or fragment: " + formUrl);
+    if (appSource) {
+      // Any use of the URL must be a plain attribute value, never concatenated with data.
+      var uses = appSource.match(/esc\(DATA\.feedbackUrl\)|DATA\.feedbackUrl\s*\+|\+\s*DATA\.feedbackUrl|feedbackUrl\s*\+\s*"/g) || [];
+      var concatenated = uses.filter(function (u) { return u.indexOf("+") !== -1; });
+      if (concatenated.length) formProblems.push("feedbackUrl is concatenated with something: " + concatenated.join(", "));
+      // Every rendered href using it must be immediately followed by the closing quote.
+      var hrefs = appSource.match(/href="' \+ esc\(DATA\.feedbackUrl\) \+ '[^"]*"/g) || [];
+      hrefs.forEach(function (h) {
+        var tail = h.slice(h.indexOf("esc(DATA.feedbackUrl) + '") + "esc(DATA.feedbackUrl) + '".length);
+        if (tail.replace(/"$/, "").length) formProblems.push("Something is appended to the form URL: " + h);
+      });
+      if (!hrefs.length && uses.length) formProblems.push("Could not verify how feedbackUrl is rendered — check by hand.");
+      // Anything glued onto the end of the URL, and any hardcoded query string.
+      // (A ternary like `DATA.feedbackUrl ? ... : ...` is not an append.)
+      if (/esc\(DATA\.feedbackUrl\)\s*\+\s*'[^'"]/.test(appSource)) formProblems.push("Something is appended directly after the form URL.");
+      if (/https:\/\/tally\.so[^"'\s]*\?/.test(appSource)) formProblems.push("A hardcoded query string appears on a form URL in app.js.");
+    } else {
+      formProblems.push("app.js not scanned (open over http://)");
+    }
+  }
+  check("Analytics", "The feedback form is opened bare — nothing from the app is passed to it",
+    formProblems.length ? (appSource ? "fail" : "warn") : "pass",
+    formProblems.length ? formProblems.join("\n") :
+      "Form: " + (formUrl || "(none set)") + "\nNo query string, no concatenation, opened with target=_blank and rel=noopener noreferrer, so not even the referring URL is sent.");
 
   check("Analytics", "Analytics and feedback are disabled until a GoatCounter code is set",
     (D.analytics && D.analytics.enabled && !D.analytics.goatcounterCode) ? "fail" : "pass",

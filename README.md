@@ -210,6 +210,8 @@ Don't paste GoatCounter's `<script>` snippet into `index.html` — `app.js` inje
 
 **Feedback.** Under the results: "Was this useful?" with 👍 / 👎. A tap sends one anonymous event and shows a short thank-you. It appears once per session, never nags and never blocks the results. No stars, no rating scale, no popup.
 
+A thumbs-down also offers the [Tally form](https://tally.so/r/VLg9lM), and a quiet "Something wrong? Tell us." link sits under the thumbs either way. The form always opens in a new tab at its **bare URL** — no answers, no results, no query parameters — with `rel="noreferrer"` so not even the referring page is passed. The audit enforces this: it fails if anything is ever appended to that URL (verified against a deliberately tampered build).
+
 ## Deploy
 
 The site is static, so any host works. It is currently deployed on **Vercel** from this repo: push to `main` and Vercel redeploys.

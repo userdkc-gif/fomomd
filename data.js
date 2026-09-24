@@ -34,7 +34,7 @@ window.FOMOMD_DATA = {
   /* ------------------------------------------------------------------
      1. CONTENT METADATA
      ------------------------------------------------------------------ */
-  contentVersion: "1.6",
+  contentVersion: "1.7",
   lastReviewed: "2026-09-24",   // date of the last clinical content review (YYYY-MM-DD)
   reviewerName: "Dr. Karthik Deegutla, Anaesthesiologist",   // shown in the footer
 
@@ -69,8 +69,8 @@ window.FOMOMD_DATA = {
   // It NEVER sends answers, traits, results, branch names or free text —
   // track() drops anything not on that list, and dev/audit.html enforces it.
   analytics: {
-    enabled: false,
-    goatcounterCode: ""
+    enabled: true,
+    goatcounterCode: "fomomd"   // dashboard: https://fomomd.goatcounter.com
   },
 
   // Optional feedback link, e.g. "https://forms.gle/YOUR_FORM_ID".

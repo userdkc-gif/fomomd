@@ -196,9 +196,9 @@ If a persona fails after edits, adjust **answer weights** only, never the hard r
 
 ## Analytics and feedback
 
-Both are **off until a GoatCounter code is set** in `data.js`. With them off, FOMOMD makes no third-party requests at all and the feedback block is hidden entirely, so there is never a dead button.
+Analytics is **on**, sending to [fomomd.goatcounter.com](https://fomomd.goatcounter.com) — cookieless, no personal data. To turn it off, set `analytics.enabled` to `false` in `data.js`; the feedback block then hides itself too, so there is never a dead button.
 
-To turn them on: create a free site at [goatcounter.com](https://www.goatcounter.com), then in `data.js` set `analytics.goatcounterCode` to your account name and `analytics.enabled` to `true`.
+Don't paste GoatCounter's `<script>` snippet into `index.html` — `app.js` injects it when `analytics.enabled` is true, and having both would double-count every visit. GoatCounter's own script skips `localhost`, so local testing never reaches the dashboard.
 
 **What can be sent.** GoatCounter is cookieless. FOMOMD sends a page view plus these fixed event names, and nothing else:
 

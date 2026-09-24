@@ -471,7 +471,12 @@
     "lastReviewed: " + (D.lastReviewed || "empty") + "; reviewerName: " + (D.reviewerName || "empty"));
   var noSources = D.specialties.filter(function (s3) { return !s3.sources.length; }).length;
   check("Content", "Per-branch sources (informational — left empty by owner decision, 2026-09-16)", "info", noSources + " of " + D.specialties.length + " branches have no sources yet");
-  check("Content", "Analytics disabled by default", D.analytics && D.analytics.enabled ? "warn" : "pass", D.analytics && D.analytics.enabled ? "Analytics is ENABLED — confirm this is intended." : "");
+  var an = D.analytics || {};
+  check("Content", "Analytics configuration is coherent",
+    an.enabled && !an.goatcounterCode ? "fail" : "pass",
+    an.enabled
+      ? "ENABLED, sending to " + an.goatcounterCode + ".goatcounter.com — cookieless, and restricted to the allowlisted event names checked above. GoatCounter's own script does not count localhost, so local testing stays out of the dashboard."
+      : "Disabled: no third-party requests, and the feedback block is hidden.");
 
   /* ---------- Render ---------- */
   var groups = ["Data", "Personas", "Random sets", "Discrimination", "Analytics", "Gender", "Content"];

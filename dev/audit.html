@@ -438,6 +438,52 @@
     "enabled: " + !!(D.analytics && D.analytics.enabled) + ", code set: " + !!(D.analytics && D.analytics.goatcounterCode) +
     ". With analytics off the feedback block is hidden entirely, so there is never a dead button.");
 
+  /* ---------- 3f. Copy must not under-promise the output (v1.9) ---------- */
+  // What the results page actually renders, measured rather than assumed.
+  var sampleRes = E.computeResults(F.personaToAnswers(F.personas[0]), { skipSensitivity: true });
+  var renderedBranches = sampleRes.keptEntries.length;
+  var renderedSections = ["closest 3", "families", "full fit map", "shortlist"];
+
+  // Flags a promise of a fixed number of branches that is NOT qualified as a
+  // subset ("closest 3", "top 3", "my closest 3 of 33"). A bare "3 branches
+  // worth exploring" contradicts a page that ranks every branch.
+  var COUNT_WORDS = { one: 1, two: 2, three: 3, four: 4, five: 5 };
+  function stalePromises(strings) {
+    var bad = [];
+    strings.forEach(function (item) {
+      var text = item.text;
+      var re = /\b(\d{1,2}|one|two|three|four|five)\s+(branch|branches|matches|results|options)\b/gi;
+      var m;
+      while ((m = re.exec(text)) !== null) {
+        var n = COUNT_WORDS[m[1].toLowerCase()] || parseInt(m[1], 10);
+        if (!n || n < 2 || n >= renderedBranches) continue;     // "all 33 branches", "at least one branch"
+        // The ONLY thing that makes a count honest is subset wording in the
+        // same string. "from 33 options" does not qualify — that is exactly
+        // how the stale v1.1 copy read.
+        var qualified = /\b(closest|top|best|strongest|first)\b/i.test(text);
+        if (!qualified) bad.push(item.path + ": \"" + text.slice(0, 120) + "\"");
+      }
+    });
+    return bad;
+  }
+
+  var uiStrings = collectStrings(D.strings, "strings", []);
+  var stale = stalePromises(uiStrings);
+  // Self-test: the rule must catch the v1.1 wording this check was written for.
+  var selfTest = stalePromises([
+    { path: "SELFTEST", text: "3 branches worth exploring, from 33 options" },
+    { path: "SELFTEST", text: "You get 3 branches worth exploring, each with why it may fit." }
+  ]);
+  var selfTestOk = selfTest.length === 2;
+
+  check("Copy", "No user-facing string promises fewer branches than the results page shows",
+    stale.length || !selfTestOk ? "fail" : "pass",
+    (stale.length ? "STALE PROMISES:\n" + stale.join("\n") + "\n\n" : "") +
+    (selfTestOk ? "" : "SELF-TEST FAILED — the rule no longer catches the old v1.1 wording, so it cannot be trusted.\n") +
+    "Results render " + renderedBranches + " ranked branches across " + renderedSections.length + " sections (" + renderedSections.join(", ") + ").\n" +
+    "Scanned " + uiStrings.length + " UI strings. Subset wording such as \"your closest 3\" or \"stayed in your top 3\" is allowed; a bare promise of a fixed number is not.\n" +
+    "Self-test: the two v1.1 strings this check was written for are both still caught.");
+
   /* ---------- 4. Gender: questions and dimensions ---------- */
   var GENDER_Q = /\b(gender|sex|sexes|male|female|man|woman|men|women|boy|girl|boys|girls|husband|wife|married|marriage|marital|maternity|paternity|family planning|pregnant yourself)\b/i;
   var PROXY = /\b(marriage|marital|family planning|your own children|having children|start a family|maternity leave|safety as a|hostel|physical appearance|your looks|dress code|household duties|in-laws)\b/i;
@@ -511,7 +557,7 @@
       : "Disabled: no third-party requests, and the feedback block is hidden.");
 
   /* ---------- Render ---------- */
-  var groups = ["Data", "Personas", "Random sets", "Discrimination", "Analytics", "Gender", "Content"];
+  var groups = ["Data", "Personas", "Random sets", "Discrimination", "Copy", "Analytics", "Gender", "Content"];
   var core = checks.filter(function (c) { return c.group !== "Content"; });
   var coreFail = core.filter(function (c) { return c.status === "fail"; }).length;
   var contentWarn = checks.filter(function (c) { return c.group === "Content" && (c.status === "warn" || c.status === "fail"); }).length;

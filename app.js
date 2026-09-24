@@ -828,7 +828,9 @@
       '</section>' +
       '<section class="card how" aria-labelledby="how-title">' +
         '<h2 id="how-title">' + esc(t("landing.howTitle")) + '</h2>' +
-        '<ol class="steps">' + t("landing.howSteps").map(function (s) { return '<li>' + s + '</li>'; }).join("") + '</ol>' +
+        '<ol class="steps">' + t("landing.howSteps").map(function (s) {
+          return '<li>' + fill(s, { n: DATA.specialties.length }) + '</li>';
+        }).join("") + '</ol>' +
         '<p class="never">' + t("landing.never") + '</p>' +
         '<p class="method-link"><a href="#method">' + esc(t("landing.methodLink")) + ' →</a></p>' +
       '</section>' +
@@ -1246,6 +1248,11 @@
         '<div class="results-mascot">' + mascotSVG("happy", "bounce") + '</div>' +
         '<h1 data-autofocus>' + esc(t("results.heading")) + '</h1>' +
         '<p class="timestamp">' + esc(t("results.stateTrait", { date: formatDate(state.completedAt || new Date()) })) + '</p>' +
+        '<p class="results-intro">' + withHtml("results.resultsIntro", {
+          n: String(DATA.specialties.length),
+          mapLink: '<a href="#map-title">' + esc(t("results.resultsIntroMap")) + '</a>',
+          shortlistLink: '<a href="#sl-title">' + esc(t("results.resultsIntroShortlist")) + '</a>'
+        }) + '</p>' +
       '</section>' +
       disclaimerBlock(t("results.disclaimer")) +
       (banners.length ? '<div class="banners">' + banners.map(function (b) {
@@ -1278,7 +1285,7 @@
   /* ---------- Copy my results (plain text) ---------- */
   function resultsText() {
     var res = state.results;
-    var lines = [t("results.copyHeader"), t("results.answersOn", { date: formatDate(state.completedAt || new Date()) }), ""];
+    var lines = [t("results.copyHeader", { n: DATA.specialties.length }), t("results.answersOn", { date: formatDate(state.completedAt || new Date()) }), ""];
     res.top.forEach(function (r) {
       var adj = r.adjacent.length ? " (" + t("results.copyAdjacent") + ": " + r.adjacent.map(function (a) { return a.shortName; }).join(", ") + ")" : "";
       lines.push(r.rank + ". " + r.spec.shortName + " — " + t("results.bands." + r.band) + adj);
@@ -1487,7 +1494,7 @@
     renderScreen("method",
       '<section class="method">' +
         '<h1 data-autofocus>' + esc(t("method.title")) + '</h1>' +
-        '<p class="lede">' + esc(t("method.intro")) + '</p>' +
+        '<p class="lede">' + esc(t("method.intro", { n: DATA.specialties.length })) + '</p>' +
         '<section class="card"><h2>' + esc(t("method.dimsTitle")) + '</h2><p>' + esc(t("method.dimsIntro")) + '</p>' +
           '<ol class="dims">' + dims.map(function (d) {
             return '<li><strong>' + esc(d.label) + '</strong> — ' + esc(d.description) + '</li>';

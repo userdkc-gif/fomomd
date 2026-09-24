@@ -348,6 +348,8 @@ main { flex: 1; padding-block: 16px 48px; }
 .results-head { text-align: center; padding-block: 12px 4px; }
 .results-mascot .mascot { width: 80px; height: auto; }
 .soft-disclaimer { color: var(--muted); max-width: 34rem; margin-inline: auto; }
+.results-intro { max-width: 36rem; margin-inline: auto; color: var(--ink); }
+.results-intro a { color: var(--primary); font-weight: 600; }
 
 .banners { display: grid; gap: 10px; margin-block: 16px; }
 .banner { margin: 0; padding: 12px 16px; border-radius: var(--radius-sm); border: 1px solid; font-size: .95rem; }

@@ -34,7 +34,7 @@ window.FOMOMD_DATA = {
   /* ------------------------------------------------------------------
      1. CONTENT METADATA
      ------------------------------------------------------------------ */
-  contentVersion: "1.8",
+  contentVersion: "1.9",
   lastReviewed: "2026-09-24",   // date of the last clinical content review (YYYY-MM-DD)
   reviewerName: "Dr. Karthik Deegutla, Anaesthesiologist",   // shown in the footer
 
@@ -104,14 +104,14 @@ window.FOMOMD_DATA = {
         metaTime: "About 6–8 minutes, {n} questions",
         metaPrivacy: "No login. Nothing about you is saved.",
         metaPrivacyAnalytics: "No login. Your answers are never saved or sent.",
-        metaBranches: "3 branches worth exploring, from {n} options",
+        metaBranches: "Your closest 3, plus all {n} branches ranked",
         start: "Start",
         stateTrait: "Answer as your usual self over the last year — not how you feel this week. Exam fatigue can make almost anyone crave a quiet life.",
         howTitle: "How it works",
         howSteps: [
           "<strong>4 short rounds</strong> — instincts, a day in your life, pressure, and the long game. Take your time; there are no right answers.",
           "<strong>We never name branches</strong> while you answer, so prestige doesn't sway you.",
-          "<strong>You get 3 branches worth exploring</strong>, each with why it may fit, where it may not, an honest reality check and questions to ask a resident."
+          "<strong>You get four views of your answers</strong> — your closest 3 in full, the strongest fit in each family of medicine, all {n} branches ranked in a fit map, and a shortlist tool where you tick the branches actually open to you. Every branch shows why it may fit, where it may not, an honest reality check and questions to ask a resident."
         ],
         never: "<strong>We never ask for</strong> your rank, marks or cutoffs, and we never predict colleges or seats.",
         methodLink: "About the method",
@@ -142,8 +142,11 @@ window.FOMOMD_DATA = {
       computing: "Thinking through your answers across {n} branches…",
 
       results: {
-        heading: "3 Branches Worth Exploring",
+        heading: "Your Results",
         answersOn: "Your answers on {date}",
+        resultsIntro: "Four views of the same answers: your closest 3 below, the strongest fit in each family of medicine, all {n} branches ranked in the {mapLink}, and {shortlistLink} for the branches actually open to you.",
+        resultsIntroMap: "full fit map",
+        resultsIntroShortlist: "a shortlist tool",
         disclaimer: "FOMOMD is an educational self-reflection tool, not career counselling. It does NOT consider your rank, seat availability, finances, service bonds, location or family situation. In a 2009 US study, a well-known specialty-interest questionnaire (the AAMC's MSPI) correctly predicted medical students' eventual specialty about 58% of the time — even the best tools of this kind are only moderately accurate. Preferences often change with clinical exposure — retake this in a few months.",
         bands: { strong: "Strong fit", good: "Good fit — explore", possible: "Possible fit" },
         rankLabel: "Branch {i} of 3",
@@ -233,7 +236,7 @@ window.FOMOMD_DATA = {
         copied: "Copied ✓",
         copyFallback: "Couldn't copy automatically — the text is below. Select it and copy.",
         copyLabel: "Your results as plain text",
-        copyHeader: "FOMOMD — 3 branches worth exploring",
+        copyHeader: "FOMOMD — my closest 3, of {n} branches ranked",
         copyAdjacent: "adjacent",
         ignoresTitle: "What FOMOMD deliberately ignores",
         ignoresIntro: "These matter a lot for your decision, but FOMOMD does not (and should not) weigh them for you:",
@@ -255,11 +258,11 @@ window.FOMOMD_DATA = {
 
       share: {
         title: "Your result card",
-        intro: "Portrait size for stories and status updates. It shows only your 3 branches and fit bands — none of your answers.",
-        listTitle: "3 branches worth exploring",
+        intro: "Portrait size for stories and status updates. It shows your closest 3 and their fit bands — none of your answers. Your full fit map stays in the app.",
+        listTitle: "My closest 3",
         verdict: "Guidance, not a verdict.",
         subline: "An educational self-reflection tool — not career counselling.",
-        cardLabel: "Result card listing three branches worth exploring: {list}",
+        cardLabel: "Result card listing my closest 3 branches: {list}",
         download: "Download image",
         nativeShare: "Share…",
         back: "← Back to results",
@@ -272,7 +275,7 @@ window.FOMOMD_DATA = {
 
       method: {
         title: "About the method",
-        intro: "FOMOMD is a structured self-reflection exercise. Here is exactly how it works and where its limits are.",
+        intro: "FOMOMD is a structured self-reflection exercise. Your answers produce four views: your closest 3, the strongest fit in each family of medicine, all {n} branches ranked, and a shortlist of the branches actually open to you. Here is exactly how that works and where its limits are.",
         dimsTitle: "The 14 dimensions",
         dimsIntro: "Every question nudges one or more of these dimensions. Every branch has an estimated score on each.",
         profilesTitle: "Branch profiles",

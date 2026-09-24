@@ -7,7 +7,7 @@
 <!-- Replace with a real screenshot: save one to docs/screenshot.png and it will appear here -->
 ![FOMOMD results page](docs/screenshot.png)
 
-A 28-question self-reflection tool for doctors choosing an MD/MS (or DNB) branch during post-NEET-PG counselling. It runs entirely in the browser: no login, no backend, no analytics, nothing stored.
+A 28-question self-reflection tool for doctors choosing an MD/MS (or DNB) branch during post-NEET-PG counselling. It returns a closest 3, the strongest fit in each family of medicine, all 33 branches ranked, and a shortlist tool for the branches actually open to you. It runs entirely in the browser: no login, no backend, no analytics, nothing stored.
 
 Content version **1.5** (beta). MIT licensed.
 
@@ -157,6 +157,7 @@ It runs:
 - **All 8 persona tests.**
 - **500 seeded random answer sets.** Checks: no errors; valid fit bands with no percentages; "why" built only from high-scoring traits; a "may NOT fit" statement on every result; no rank/cutoff/salary language.
 - **Gender checks.** No question asks for or uses gender, and no data field stores it. No dimension is defined in gendered terms, and no question probes common proxies (marriage, family plans, appearance…).
+- **Copy check (new in v1.9).** Scans every user-facing string and fails if any promises a fixed number of results smaller than the page actually renders — the v1.1 copy said "3 branches worth exploring" long after the fit map shipped. The check carries a self-test against that original wording, so it cannot quietly stop working.
 - **Discrimination checks (new in v1.2).** 5,000 random answer sets: no branch may take more than 25% or fewer than 2% of top-3 places; every branch must reach #1 for some answer set; the spread (Shannon entropy) of #1 results must be at least 80% of maximum; single-answer flips must move the top 3 without churning it completely; and every scored question's options must differ enough to carry information. It also prints the old v1.1 distribution beside the new one.
 - **Availability checks (v1.3).** Every branch must carry a valid tier, and no restricted-entry branch may appear in the closest 3 or the families section across 5,000 random sets.
 - **Skip-bias check (v1.3).** Runs answer sets with 0, 2, 4, 6 and 8 skipped questions and reports how the spread of #1 results changes, plus how distinctive the winning branches are. It fails if skipping pushes results towards bland, middle-of-the-road branches.

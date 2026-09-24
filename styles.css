@@ -528,6 +528,12 @@ details[open] summary { margin-bottom: 4px; }
 .also-called { color: var(--muted); font-size: .9rem; margin: 0 0 8px; }
 .sl-alias { color: var(--muted); font-size: .85rem; }
 
+/* ---------- v1.6 feedback block ---------- */
+.feedback { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 20px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.fb-title { margin: 0; font-weight: 650; }
+.fb-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+.fb-thanks { margin: 0; color: var(--muted); }
+
 /* ---------- Small phones (360px) ---------- */
 @media (max-width: 380px) {
   .card, .q-card, .result-card, .round-card { padding: 16px; }

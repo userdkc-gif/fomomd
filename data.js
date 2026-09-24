@@ -34,7 +34,7 @@ window.FOMOMD_DATA = {
   /* ------------------------------------------------------------------
      1. CONTENT METADATA
      ------------------------------------------------------------------ */
-  contentVersion: "1.5",
+  contentVersion: "1.6",
   lastReviewed: "2026-09-24",   // date of the last clinical content review (YYYY-MM-DD)
   reviewerName: "Dr. Karthik Deegutla, Anaesthesiologist",   // shown in the footer
 
@@ -56,13 +56,18 @@ window.FOMOMD_DATA = {
     }
   ],
 
-  // OPTIONAL, DISABLED BY DEFAULT — privacy-friendly analytics (GoatCounter).
-  // GoatCounter is cookieless and stores no personal data. If you enable it,
-  // FOMOMD sends ONLY page views and "question N reached" / "results shown"
-  // events (for drop-off). It NEVER sends answers, traits or results.
-  // To enable: create a free site at goatcounter.com, put its code below
-  // (e.g. "fomomd" for fomomd.goatcounter.com) and set enabled: true.
-  // A footer notice appears automatically when enabled.
+  // OPTIONAL — privacy-friendly analytics (GoatCounter), cookieless.
+  // To enable: put your GoatCounter code below (e.g. "fomomd" for
+  // fomomd.goatcounter.com) and set enabled: true. A footer notice and the
+  // "What FOMOMD sends" section on the method page appear automatically.
+  //
+  // FOMOMD can only ever send the fixed event names allowlisted in app.js
+  // (ALLOWED_EVENTS): quiz_start, round_complete_1..4, quiz_abandoned_qN
+  // (the question number reached, nothing else), results_reached,
+  // fitmap_opened, shortlist_used, sharecard_downloaded, results_copied,
+  // retake_clicked, feedback_useful, feedback_not_useful.
+  // It NEVER sends answers, traits, results, branch names or free text —
+  // track() drops anything not on that list, and dev/audit.html enforces it.
   analytics: {
     enabled: false,
     goatcounterCode: ""
@@ -96,6 +101,7 @@ window.FOMOMD_DATA = {
         line: "Many doctors wonder if they picked the right branch. FOMOMD helps you think it through calmly before you choose.",
         metaTime: "About 6–8 minutes, {n} questions",
         metaPrivacy: "No login. Nothing about you is saved.",
+        metaPrivacyAnalytics: "No login. Your answers are never saved or sent.",
         metaBranches: "3 branches worth exploring, from {n} options",
         start: "Start",
         stateTrait: "Answer as your usual self over the last year — not how you feel this week. Exam fatigue can make almost anyone crave a quiet life.",
@@ -206,6 +212,11 @@ window.FOMOMD_DATA = {
         shortlistOverall: "Your overall #1 was {name}; here's how your options compare.",
         shortlistHidden: "{names} — you ruled this out earlier in the quiz, but it is on your list, so it is ranked here too.",
         shortlistPrivacy: "Your list stays in this page only. Nothing is sent or saved, and FOMOMD never asks for your rank, marks or college.",
+        feedbackTitle: "Was this useful?",
+        feedbackYes: "👍 Yes",
+        feedbackNo: "👎 Not really",
+        feedbackThanks: "Thank you — noted.",
+        feedbackThanksNo: "Thank you — that's genuinely useful to know.",
         snapshotTitle: "Your trait snapshot",
         snapshotSub: "Your five clearest leanings, based on today's answers.",
         strength: { strong: "Strong", clear: "Clear", moderate: "Moderate" },
@@ -281,6 +292,19 @@ window.FOMOMD_DATA = {
           "Magnitude check: cosine similarity ignores how strong your preferences are, so FOMOMD separately checks whether your answers were very flat and tells you when results are less certain.",
           "Sensitivity check: your answers are re-scored {runs} times with every dimension weight randomly shifted by up to ±{pct}%. The stability line under each result shows how often that branch stayed in your top 3."
         ],
+        sendsTitle: "What FOMOMD sends",
+        sendsNone: "Nothing. There is no analytics, no backend and no account. Your answers stay in this browser tab and disappear when you close it.",
+        sendsIntro: "Anonymous, cookie-free counts through GoatCounter, so we can see where people get stuck and whether the tool helps. Your answers, traits, results and branch names are never sent, and neither is any free text. This is the complete list of what can be sent:",
+        sendsList: [
+          "A page view when the page loads",
+          "quiz_start — the quiz was started",
+          "round_complete_1 … round_complete_4 — a round was finished",
+          "quiz_abandoned_qN — someone left mid-quiz, and the question number they had reached (nothing about the answers)",
+          "results_reached — the results page was shown",
+          "fitmap_opened, shortlist_used, sharecard_downloaded, results_copied, retake_clicked — a feature was used",
+          "feedback_useful / feedback_not_useful — the thumbs button under the results"
+        ],
+        sendsOutro: "Each of those is sent as a bare name with nothing attached. The list is enforced in code: app.js keeps an allowlist and drops anything not on it, and the audit page checks every call against it.",
         sensitivityTitle: "Your sensitivity check",
         sensitivityNone: "Take the quiz first — your sensitivity check will appear here and on your results page.",
         back: "← Back",
@@ -296,6 +320,7 @@ window.FOMOMD_DATA = {
         beta: "beta",
         betaNote: "New tool — if anything looks wrong or unfair, tell us.",
         privacy: "Guidance, not counselling. FOMOMD never asks for rank, marks or cutoffs, never predicts colleges or seats, and nothing you answer leaves this page.",
+        privacyAnalytics: "Guidance, not counselling. FOMOMD never asks for rank, marks or cutoffs and never predicts colleges or seats. Your answers and results never leave this page; we count anonymous visits and a few actions, such as reaching the results, to see where people get stuck.",
         analytics: "Anonymous, cookie-free visit counts only.",
         feedback: "Is something wrong or misleading? Tell us."
       },

@@ -5,7 +5,7 @@
    the new version (e.g. "fomomd-v1.2").
    Only runs on http/https — not when index.html is opened as a file.
    ===================================================================== */
-var CACHE_VERSION = "fomomd-v1.5-2026-09-24";
+var CACHE_VERSION = "fomomd-v1.6-2026-09-24";
 var APP_SHELL = ["./", "index.html", "styles.css", "data.js", "app.js"];
 
 self.addEventListener("install", function (event) {

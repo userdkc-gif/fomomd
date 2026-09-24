@@ -336,6 +336,76 @@
     }).join("\n") +
     "\nChange from 0 to 8 skips — entropy " + (entropyDrop * 100).toFixed(1) + "%, winner distinctiveness " + (extremityDrop * 100).toFixed(1) + "% (fails above 15%).");
 
+  /* ---------- 3e. Analytics payloads (v1.6) ---------- */
+  var A = F.analytics || {};
+  var APPROVED = [
+    "quiz_start", "round_complete_1", "round_complete_2", "round_complete_3", "round_complete_4",
+    "results_reached", "fitmap_opened", "shortlist_used", "sharecard_downloaded",
+    "results_copied", "retake_clicked", "feedback_useful", "feedback_not_useful"
+  ];
+  var listExtra = (A.allowedEvents || []).filter(function (e) { return APPROVED.indexOf(e) === -1; });
+  var listMissing = APPROVED.filter(function (e) { return (A.allowedEvents || []).indexOf(e) === -1; });
+  check("Analytics", "The event allowlist matches the approved list exactly",
+    listExtra.length || listMissing.length ? "fail" : "pass",
+    (listExtra.length ? "NOT APPROVED: " + listExtra.join(", ") + "\n" : "") +
+    (listMissing.length ? "MISSING: " + listMissing.join(", ") + "\n" : "") +
+    (A.allowedEvents || []).length + " fixed names, plus quiz_abandoned_qN for the question number reached.");
+
+  // Anything carrying answers, results, branch names or free text must be refused.
+  var hostileNames = [
+    "results_reached Radiology", "feedback_text:my rank is 1234", "quiz_start?answers=aabba",
+    "shortlist_used:derm,radio", "feedback:the tool said psychiatry", "quiz_abandoned_q99",
+    "Dermatology", "results_copied " + (D.specialties[0] || {}).shortName, "custom_event"
+  ];
+  var accepted = hostileNames.filter(function (n) { return A.isAllowedEvent && A.isAllowedEvent(n); });
+  check("Analytics", "Event names carrying answers, results, branch names or free text are refused",
+    accepted.length ? "fail" : "pass",
+    accepted.length ? "WRONGLY ACCEPTED: " + accepted.join(" | ") :
+      "All " + hostileNames.length + " hostile payloads refused, including branch names, pasted answers and free text.");
+
+  // Static scan: every track() call in app.js must pass a literal from the list.
+  var trackScan = "not run (open this page over http:// to scan app.js)";
+  var trackStatus = "warn";
+  try {
+    var req = new XMLHttpRequest();
+    req.open("GET", "../app.js", false);
+    req.send(null);
+    if (req.status >= 200 && req.status < 400) {
+      var src = req.responseText;
+      // Extract each track(...) argument with balanced parentheses, so a
+      // nested call like track("x" + (i + 1)) is read in full.
+      var calls = [];
+      for (var ci = src.indexOf("track("); ci !== -1; ci = src.indexOf("track(", ci + 1)) {
+        if (/[A-Za-z0-9_.$]/.test(src.charAt(ci - 1))) continue;   // skip e.g. isTrack(
+        var depth = 0, end = -1;
+        for (var cj = ci + 5; cj < src.length; cj++) {
+          if (src.charAt(cj) === "(") depth++;
+          else if (src.charAt(cj) === ")") { depth--; if (depth === 0) { end = cj; break; } }
+        }
+        if (end !== -1) calls.push(src.slice(ci + 6, end));
+      }
+      var bad = calls.filter(function (call) {
+        var arg = call.trim();
+        if (/^"[a-z_0-9]+"$/.test(arg)) return APPROVED.indexOf(arg.slice(1, -1)) === -1;
+        // the only permitted computed names
+        if (/^"round_complete_" \+/.test(arg)) return false;
+        if (/^"quiz_abandoned_q" \+ \(state\.qIndex \+ 1\)$/.test(arg)) return false;
+        if (/^value === "useful" \? "feedback_useful" : "feedback_not_useful"$/.test(arg)) return false;
+        if (arg === "eventName" || arg === "") return false;   // the definition itself
+        return true;
+      });
+      trackStatus = bad.length ? "fail" : "pass";
+      trackScan = bad.length ? "Calls that could send something else: " + bad.map(function (b) { return "track(" + b + ")"; }).join(" | ")
+        : calls.length + " track() calls in app.js, every one a literal from the allowlist or an approved computed name.";
+    }
+  } catch (e) { trackScan = "not run (" + e.name + ")"; }
+  check("Analytics", "Every track() call in app.js sends an allowlisted name", trackStatus, trackScan);
+
+  check("Analytics", "Analytics and feedback are disabled until a GoatCounter code is set",
+    (D.analytics && D.analytics.enabled && !D.analytics.goatcounterCode) ? "fail" : "pass",
+    "enabled: " + !!(D.analytics && D.analytics.enabled) + ", code set: " + !!(D.analytics && D.analytics.goatcounterCode) +
+    ". With analytics off the feedback block is hidden entirely, so there is never a dead button.");
+
   /* ---------- 4. Gender: questions and dimensions ---------- */
   var GENDER_Q = /\b(gender|sex|sexes|male|female|man|woman|men|women|boy|girl|boys|girls|husband|wife|married|marriage|marital|maternity|paternity|family planning|pregnant yourself)\b/i;
   var PROXY = /\b(marriage|marital|family planning|your own children|having children|start a family|maternity leave|safety as a|hostel|physical appearance|your looks|dress code|household duties|in-laws)\b/i;
@@ -404,7 +474,7 @@
   check("Content", "Analytics disabled by default", D.analytics && D.analytics.enabled ? "warn" : "pass", D.analytics && D.analytics.enabled ? "Analytics is ENABLED — confirm this is intended." : "");
 
   /* ---------- Render ---------- */
-  var groups = ["Data", "Personas", "Random sets", "Discrimination", "Gender", "Content"];
+  var groups = ["Data", "Personas", "Random sets", "Discrimination", "Analytics", "Gender", "Content"];
   var core = checks.filter(function (c) { return c.group !== "Content"; });
   var coreFail = core.filter(function (c) { return c.status === "fail"; }).length;
   var contentWarn = checks.filter(function (c) { return c.group === "Content" && (c.status === "warn" || c.status === "fail"); }).length;

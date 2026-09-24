@@ -64,6 +64,21 @@
   var SENSITIVITY_RUNS = 10;
   var SENSITIVITY_JITTER = 0.2;
 
+  /* Every event FOMOMD can ever send. track() refuses anything else, so a
+     future edit cannot quietly start sending answers, results or free text.
+     dev/audit.html checks this list and every track() call in this file. */
+  var ALLOWED_EVENTS = [
+    "quiz_start", "round_complete_1", "round_complete_2", "round_complete_3", "round_complete_4",
+    "results_reached", "fitmap_opened", "shortlist_used", "sharecard_downloaded",
+    "results_copied", "retake_clicked", "feedback_useful", "feedback_not_useful"
+  ];
+  // The only event carrying a number: how far someone got before leaving.
+  var ABANDON_EVENT = /^quiz_abandoned_q([1-9]|1[0-9]|2[0-8])$/;
+
+  function isAllowedEvent(name) {
+    return ALLOWED_EVENTS.indexOf(name) !== -1 || ABANDON_EVENT.test(name);
+  }
+
   var hasLocation = typeof location !== "undefined";
   var LANG = (function () {
     var m = hasLocation ? /[?&]lang=([A-Za-z-]+)/.exec(location.search || "") : null;
@@ -650,7 +665,8 @@
 
   window.FOMOMD = {
     engine: Engine, personas: PERSONAS, personaToAnswers: personaToAnswers,
-    validateData: validateData, runPersonaTests: runPersonaTests, t: t, language: LANG
+    validateData: validateData, runPersonaTests: runPersonaTests, t: t, language: LANG,
+    analytics: { allowedEvents: ALLOWED_EVENTS, abandonPattern: ABANDON_EVENT, isAllowedEvent: isAllowedEvent }
   };
   window.runPersonaTests = runPersonaTests;
 
@@ -690,17 +706,20 @@
   var analyticsOn = (function () {
     var a = DATA.analytics;
     if (!a || !a.enabled || !a.goatcounterCode || !/^https?:$/.test(location.protocol)) return false;
-    var s = document.createElement("script");
-    s.async = true;
-    s.src = "https://gc.zgo.at/count.js";
-    s.setAttribute("data-goatcounter", "https://" + encodeURIComponent(a.goatcounterCode) + ".goatcounter.com/count");
-    document.head.appendChild(s);
+    var s2 = document.createElement("script");
+    s2.async = true;
+    s2.src = "https://gc.zgo.at/count.js";
+    s2.setAttribute("data-goatcounter", "https://" + encodeURIComponent(a.goatcounterCode) + ".goatcounter.com/count");
+    document.head.appendChild(s2);
     return true;
   })();
-  // Sends ONLY a generic event name (e.g. "question-7", "results-shown").
-  // Never answers, traits or results.
+
+  /**
+   * Sends ONE allowlisted event name. No answers, no results, no branch
+   * names, no free text, no identifiers — the name is the entire payload.
+   */
   function track(eventName) {
-    if (!analyticsOn) return;
+    if (!analyticsOn || !isAllowedEvent(eventName)) return;
     try {
       if (window.goatcounter && window.goatcounter.count) {
         window.goatcounter.count({ path: "fomomd/" + eventName, title: eventName, event: true });
@@ -716,7 +735,7 @@
     set("brand-sub", t("headerSubtitle"));
     set("header-note", t("headerNote"));
     set("skip-link", t("skipLink"));
-    set("footer-privacy", t("footer.privacy"));
+    set("footer-privacy", analyticsOn ? t("footer.privacyAnalytics") : t("footer.privacy"));
     var beta = document.getElementById("footer-beta");
     if (beta) { beta.textContent = t("footer.beta"); beta.title = t("footer.betaNote"); }
     var betaNote = document.getElementById("footer-beta-note");
@@ -801,7 +820,7 @@
         '<p class="lede">' + esc(t("landing.line")) + '</p>' +
         '<ul class="meta-list">' +
           '<li><span aria-hidden="true">⏱️</span> ' + esc(t("landing.metaTime", { n: QUESTIONS.length })) + '</li>' +
-          '<li><span aria-hidden="true">🔒</span> ' + esc(t("landing.metaPrivacy")) + '</li>' +
+          '<li><span aria-hidden="true">🔒</span> ' + esc(analyticsOn ? t("landing.metaPrivacyAnalytics") : t("landing.metaPrivacy")) + '</li>' +
           '<li><span aria-hidden="true">🧭</span> ' + esc(t("landing.metaBranches", { n: DATA.specialties.length })) + '</li>' +
         '</ul>' +
         '<p class="state-trait" role="note">' + esc(t("landing.stateTrait")) + '</p>' +
@@ -896,7 +915,6 @@
         (q.type !== "slider" ? '<p class="kbd-hint">' + esc(t("question.kbdHint", { keys: q.options.map(function (_, i) { return i + 1; }).join(", ") })) + '</p>' : '') +
       '</section>'
     );
-    track("question-" + (state.qIndex + 1));
 
     var slider = main.querySelector(".slider");
     if (slider) {
@@ -954,12 +972,13 @@
     state.qIndex++;
     if (state.qIndex >= QUESTIONS.length) { finish(); return; }
     var next = QUESTIONS[state.qIndex];
-    if (next.roundIndex !== prev.roundIndex) renderRoundIntro(next.roundIndex);
+    if (next.roundIndex !== prev.roundIndex) { track("round_complete_" + (prev.roundIndex + 1)); renderRoundIntro(next.roundIndex); }
     else renderQuestion();
   }
 
   /* ---------- Results ---------- */
   function finish() {
+    track("round_complete_" + (DATA.rounds.length));
     state.results = computeResults(state.answers);
     state.completedAt = new Date();
     renderScreen("computing",
@@ -968,7 +987,7 @@
         '<div class="dots" aria-hidden="true"><span></span><span></span><span></span></div>' +
       '</section>'
     );
-    wait(1200).then(function () { renderResults(); track("results-shown"); });
+    wait(1200).then(function () { renderResults(); track("results_reached"); });
   }
 
   var CATEGORY_CLASS = {
@@ -1065,6 +1084,22 @@
       '</span></summary>' +
       '<div class="bp-body">' + stabilityLine(e, res) + resultBody(e) + '</div>' +
     '</details>';
+  }
+
+  /**
+   * "Was this useful?" — two taps, nothing else. Hidden entirely when
+   * analytics is off, so there is never a dead button. Shown once per
+   * session and never repeated.
+   */
+  function feedbackBlock() {
+    if (!analyticsOn || state.feedbackDone) return "";
+    return '<section class="feedback no-print" id="feedback-block" aria-labelledby="fb-title">' +
+      '<p class="fb-title" id="fb-title">' + esc(t("results.feedbackTitle")) + '</p>' +
+      '<div class="fb-buttons">' +
+        '<button class="btn btn-small" data-action="feedback" data-value="useful">' + esc(t("results.feedbackYes")) + '</button>' +
+        '<button class="btn btn-small" data-action="feedback" data-value="not_useful">' + esc(t("results.feedbackNo")) + '</button>' +
+      '</div>' +
+    '</section>';
   }
 
   function ignoresPanel() {
@@ -1220,6 +1255,7 @@
       '</div>' +
       '<div class="copy-fallback no-print" hidden><label for="copy-text">' + esc(t("results.copyLabel")) + '</label><textarea id="copy-text" readonly rows="10"></textarea></div>' +
       '<p class="muted small">' + esc(t("results.generalIndia")) + '</p>' +
+      feedbackBlock() +
       '<p class="support" role="note"><span aria-hidden="true">💬</span> ' + withHtml("results.support", { phone: '<a href="tel:14416">14416</a>' }) + '</p>'
     );
   }
@@ -1245,7 +1281,7 @@
       var ok = false;
       try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
       ta.remove();
-      if (ok) { showToast(t("results.copied")); return; }
+      if (ok) { track("results_copied"); showToast(t("results.copied")); return; }
       var box = main.querySelector(".copy-fallback");
       if (box) {
         box.hidden = false;
@@ -1255,7 +1291,7 @@
       showToast(t("results.copyFallback"));
     };
     if (navigator.clipboard && window.isSecureContext) {
-      navigator.clipboard.writeText(text).then(function () { showToast(t("results.copied")); }, fallback);
+      navigator.clipboard.writeText(text).then(function () { track("results_copied"); showToast(t("results.copied")); }, fallback);
     } else {
       fallback();
     }
@@ -1397,6 +1433,7 @@
       var a = document.createElement("a");
       a.href = url; a.download = "fomomd-result.png";
       document.body.appendChild(a); a.click(); a.remove();
+      track("sharecard_downloaded");
       showToast(t("share.imageReady"));
     });
   }
@@ -1453,6 +1490,12 @@
           }).join("") + '</ol></section>' +
         '<section class="card"><h2>' + esc(t("method.scoringTitle")) + '</h2><ul>' +
           t("method.scoring").map(function (p) { return '<li>' + esc(fill(p, runsPct)) + '</li>'; }).join("") + '</ul></section>' +
+        '<section class="card"><h2>' + esc(t("method.sendsTitle")) + '</h2>' +
+          (analyticsOn
+            ? '<p>' + esc(t("method.sendsIntro")) + '</p><ul>' +
+              t("method.sendsList").map(function (x) { return '<li>' + esc(x) + '</li>'; }).join("") +
+              '</ul><p>' + esc(t("method.sendsOutro")) + '</p>'
+            : '<p>' + esc(t("method.sendsNone")) + '</p>') + '</section>' +
         '<section class="card"><h2>' + esc(t("method.sensitivityTitle")) + '</h2>' + sensitivity + '</section>' +
         ignoresPanel() +
         '<div class="actions">' +
@@ -1484,6 +1527,8 @@
     if (location.hash === "#method" && history.replaceState) history.replaceState(null, "", location.pathname + location.search);
     state.answers = {}; state.qIndex = 0; state.results = null; state.completedAt = null; state.busy = false;
     state.shortlist = []; state.shortlistSubmitted = false;
+    state.feedbackDone = false; state.abandonSent = false;
+    track("quiz_start");
     renderRoundIntro(0);
   }
 
@@ -1534,6 +1579,7 @@
         break;
       }
       case "shortlist-submit": {
+        track("shortlist_used");
         state.shortlistSubmitted = true;
         var box = main.querySelector("#shortlist-results");
         if (box) {
@@ -1558,7 +1604,18 @@
         renderQuestion();
         break;
       }
-      case "retake": startQuiz(); break;
+      case "feedback": {
+        var value = btn.getAttribute("data-value");
+        track(value === "useful" ? "feedback_useful" : "feedback_not_useful");
+        state.feedbackDone = true;
+        var block = main.querySelector("#feedback-block");
+        if (block) {
+          block.innerHTML = '<p class="fb-thanks" role="status">' +
+            esc(value === "useful" ? t("results.feedbackThanks") : t("results.feedbackThanksNo")) + '</p>';
+        }
+        break;
+      }
+      case "retake": track("retake_clicked"); startQuiz(); break;
       case "copy": copyResults(); break;
       case "copy-from-share": copyResults(); break;
       case "share": renderShare(); break;
@@ -1578,6 +1635,20 @@
     var buttons = main.querySelectorAll(".option");
     if (buttons[n - 1]) { e.preventDefault(); buttons[n - 1].focus(); buttons[n - 1].click(); }
   });
+
+  // Fit map opened (delegated, because the panel is re-rendered each time).
+  main.addEventListener("toggle", function (e) {
+    if (e.target && e.target.classList && e.target.classList.contains("fit-map") && e.target.open) track("fitmap_opened");
+  }, true);
+
+  // Left mid-quiz: records only how far they got, once per session.
+  function reportAbandon() {
+    if (state.abandonSent || state.screen !== "question") return;
+    state.abandonSent = true;
+    track("quiz_abandoned_q" + (state.qIndex + 1));
+  }
+  window.addEventListener("pagehide", reportAbandon);
+  document.addEventListener("visibilitychange", function () { if (document.visibilityState === "hidden") reportAbandon(); });
 
   window.addEventListener("hashchange", openMethodFromHash);
   window.addEventListener("beforeprint", function () {

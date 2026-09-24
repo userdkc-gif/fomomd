@@ -194,15 +194,21 @@ If a persona fails after edits, adjust **answer weights** only, never the hard r
 
 ---
 
-## Optional: analytics and feedback (both OFF by default)
+## Analytics and feedback
 
-- **Analytics.** In `data.js`, the `analytics` block contains a disabled GoatCounter setup. GoatCounter is cookieless and stores no personal data.
-  - If you set `enabled: true` and add your GoatCounter code, FOMOMD records page views and "question N reached" / "results shown" events (for drop-off) only. It never records answers or results.
-  - A footer notice ("Anonymous, cookie-free visit counts only.") appears automatically.
-  - Enabling analytics means the site makes a network request to GoatCounter. Update your privacy wording if you turn it on.
-- **Feedback link.** Set `feedbackUrl` to your Google Form link (e.g. `https://forms.gle/YOUR_FORM_ID`). "Is something wrong or misleading? Tell us." then appears in the footer.
+Both are **off until a GoatCounter code is set** in `data.js`. With them off, FOMOMD makes no third-party requests at all and the feedback block is hidden entirely, so there is never a dead button.
 
----
+To turn them on: create a free site at [goatcounter.com](https://www.goatcounter.com), then in `data.js` set `analytics.goatcounterCode` to your account name and `analytics.enabled` to `true`.
+
+**What can be sent.** GoatCounter is cookieless. FOMOMD sends a page view plus these fixed event names, and nothing else:
+
+`quiz_start` · `round_complete_1…4` · `quiz_abandoned_qN` (the question number reached) · `results_reached` · `fitmap_opened` · `shortlist_used` · `sharecard_downloaded` · `results_copied` · `retake_clicked` · `feedback_useful` · `feedback_not_useful`
+
+**How that is enforced.** `ALLOWED_EVENTS` in `app.js` is the complete list, and `track()` drops anything not on it — a name carrying a branch, an answer or free text is refused rather than sent. `dev/audit.html` checks three things: the list matches the approved set, hostile payloads are refused, and every `track()` call in `app.js` passes a literal from the list.
+
+**Privacy wording adapts automatically.** With analytics on, the footer and landing page stop saying "nothing about you is saved" and say precisely what happens instead: answers and results never leave the page, anonymous visits and a few actions are counted. The method page gains a "What FOMOMD sends" section listing every event above. With analytics off it says "Nothing."
+
+**Feedback.** Under the results: "Was this useful?" with 👍 / 👎. A tap sends one anonymous event and shows a short thank-you. It appears once per session, never nags and never blocks the results. No stars, no rating scale, no popup.
 
 ## Deploy
 
